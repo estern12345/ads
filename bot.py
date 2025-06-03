@@ -5,16 +5,14 @@ import random
 from telethon import TelegramClient, events
 from telethon.tl.functions.messages import GetHistoryRequest
 from aiohttp import web
-from colorama import Fore, Style, init
+from colorama import Fore, init
 
 init(autoreset=True)
 
 CREDENTIALS_FOLDER = "sessions"
 os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 DATA_FILE = "data.json"
-os.makedirs("data", exist_ok=True)
 
-# Load or initialize config
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, 'w') as f:
         json.dump({
@@ -32,15 +30,7 @@ def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f)
 
-admin_id = 6249999953  # Will be set once admin sends command
-
-casual_pool = [
-    "Hey, how's it going?",
-    "What’s up everyone?",
-    "Anyone active here?",
-    "Just checking in!",
-    "Hope you're all good!"
-]
+admin_id = 6249999953  # Set manually
 
 async def start_web_server():
     async def handle(request):
@@ -55,22 +45,17 @@ async def start_web_server():
 
 async def ad_sender(client):
     repeat = 1
-    casual_used = set()
     ad_index = 0
     while True:
         try:
             data = load_data()
             print(Fore.CYAN + f"Ad cycle {repeat}")
             for gid in data["groups"]:
-                if random.randint(1, 100) <= 20:
-                    msg = random.choice([m for m in casual_pool if m not in casual_used])
-                    casual_used.add(msg)
+                if data["mode"] == "random":
+                    msg = random.choice(data["ads"])
                 else:
-                    if data["mode"] == "random":
-                        msg = random.choice(data["ads"])
-                    else:
-                        msg = data["ads"][ad_index % len(data["ads"])]
-                        ad_index += 1
+                    msg = data["ads"][ad_index % len(data["ads"])]
+                    ad_index += 1
                 try:
                     await client.send_message(gid, msg)
                     print(Fore.GREEN + f"Sent to {gid}: {msg[:40]}")
@@ -87,70 +72,106 @@ async def ad_sender(client):
 async def command_handler(client):
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
-        global admin_id
         sender = await event.get_sender()
         if not event.is_private or not sender:
             return
-        if admin_id is None:
-            admin_id = sender.id
-        elif sender.id != admin_id:
-            await event.reply("You are not authorized.")
+
+        if sender.id != admin_id:
+            await event.reply("To buy anything DM @EscapeEternity! This is just a Bot.")
             return
 
         cmd = event.raw_text.strip()
         data = load_data()
 
-        if cmd.startswith("!addgroup"):
+        if cmd in ["!help", "/help"]:
+            await event.reply(
+                "**🤖 Bot Admin Commands**\n"
+                "`!status` – Show current settings\n"
+                "`!addgroup <group_id>` – Add group ID to send ads\n"
+                "`!rmgroup <group_id>` – Remove group ID\n"
+                "`!setads msg1 ||| msg2` – Set ad messages\n"
+                "`!setfreq <minutes>` – Set delay between ad cycles\n"
+                "`!setmode random|order` – Send ads randomly or in order\n"
+                "`!test` – Forward latest saved message to you"
+            )
+
+        elif cmd == "!status":
+            await event.reply(
+                f"**Groups:** {data['groups']}\n"
+                f"**Ads:** {len(data['ads'])} messages\n"
+                f"**Mode:** {data['mode']}\n"
+                f"**Frequency:** {data['frequency']} min"
+            )
+
+        elif cmd.startswith("!addgroup"):
             try:
                 gid = int(cmd.split()[1])
                 if gid not in data["groups"]:
                     data["groups"].append(gid)
                     save_data(data)
-                    await event.reply(f"Added group {gid}")
-            except: await event.reply("Usage: !addgroup <group_id>")
+                    await event.reply(f"✅ Added group `{gid}`")
+                else:
+                    await event.reply(f"Group `{gid}` already exists.")
+            except:
+                await event.reply("❌ Usage: `!addgroup <group_id>`")
 
         elif cmd.startswith("!rmgroup"):
             try:
                 gid = int(cmd.split()[1])
-                data["groups"] = [g for g in data["groups"] if g != gid]
-                save_data(data)
-                await event.reply(f"Removed group {gid}")
-            except: await event.reply("Usage: !rmgroup <group_id>")
+                if gid in data["groups"]:
+                    data["groups"].remove(gid)
+                    save_data(data)
+                    await event.reply(f"✅ Removed group `{gid}`")
+                else:
+                    await event.reply(f"Group `{gid}` not found.")
+            except:
+                await event.reply("❌ Usage: `!rmgroup <group_id>`")
 
         elif cmd.startswith("!setads"):
             parts = cmd.split(" ", 1)
             if len(parts) > 1:
                 data["ads"] = parts[1].split("|||")
                 save_data(data)
-                await event.reply("Updated ads.")
+                await event.reply("✅ Updated ads.")
             else:
-                await event.reply("Usage: !setads msg1 ||| msg2 ||| msg3")
+                await event.reply("❌ Usage: `!setads msg1 ||| msg2 ||| msg3`")
 
         elif cmd.startswith("!setfreq"):
             try:
                 freq = int(cmd.split()[1])
                 data["frequency"] = freq
                 save_data(data)
-                await event.reply(f"Set frequency to {freq} minutes.")
-            except: await event.reply("Usage: !setfreq <minutes>")
+                await event.reply(f"✅ Frequency set to {freq} minutes.")
+            except:
+                await event.reply("❌ Usage: `!setfreq <minutes>`")
 
         elif cmd.startswith("!setmode"):
-            mode = cmd.split()[1]
-            if mode in ["random", "order"]:
-                data["mode"] = mode
-                save_data(data)
-                await event.reply(f"Ad mode set to {mode}.")
-            else:
-                await event.reply("Use: !setmode random | order")
+            try:
+                mode = cmd.split()[1]
+                if mode in ["random", "order"]:
+                    data["mode"] = mode
+                    save_data(data)
+                    await event.reply(f"✅ Mode set to `{mode}`.")
+                else:
+                    await event.reply("❌ Use: `!setmode random` or `!setmode order`")
+            except:
+                await event.reply("❌ Usage: `!setmode <random|order>`")
 
-        elif cmd == "!status":
-            await event.reply(
-                f"Groups: {data['groups']}\nAds: {len(data['ads'])} messages\n"
-                f"Mode: {data['mode']}\nFrequency: {data['frequency']} min"
-            )
+        elif cmd == "!test":
+            try:
+                history = await client(GetHistoryRequest(peer="me", limit=1, offset_id=0,
+                                                         offset_date=None, max_id=0, min_id=0,
+                                                         add_offset=0, hash=0))
+                if history.messages:
+                    await client.forward_messages(sender.id, history.messages[0].id, "me")
+                    await event.reply("✅ Forwarded last saved message.")
+                else:
+                    await event.reply("⚠️ No messages in Saved Messages.")
+            except Exception as e:
+                await event.reply(f"❌ Error: {e}")
 
         else:
-            await event.reply("Unknown command. Try !status, !addgroup, !setads")
+            await event.reply("❓ Unknown command. Type `!help`")
 
 async def main():
     session_name = "session1"
