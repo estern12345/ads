@@ -32,7 +32,7 @@ def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f)
 
-admin_id = None  # Will be set once admin sends command
+admin_id = 6249999953  # Will be set once admin sends command
 
 casual_pool = [
     "Hey, how's it going?",
