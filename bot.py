@@ -5,7 +5,7 @@ import random
 from telethon import TelegramClient, events
 from telethon.tl.functions.messages import GetHistoryRequest
 from aiohttp import web
-from colorama import Fore, Style, init
+from colorama import Fore, init
 
 init(autoreset=True)
 
@@ -13,13 +13,15 @@ CREDENTIALS_FOLDER = "sessions"
 os.makedirs(CREDENTIALS_FOLDER, exist_ok=True)
 DATA_FILE = "data.json"
 
+ADMIN_ID = 6249999953
+
 # Initialize or fix corrupted JSON
 def load_data():
     try:
         with open(DATA_FILE, 'r') as f:
             return json.load(f)
-    except Exception:
-        print(Fore.RED + "Corrupted or missing data.json, resetting...")
+    except:
+        print(Fore.RED + "Resetting data.json")
         data = {
             "groups": [],
             "frequency": 45,
@@ -58,7 +60,6 @@ async def ad_sender(client):
                 await asyncio.sleep(60)
                 continue
 
-            print(Fore.CYAN + f"Running ad cycle to {len(data['groups'])} group(s)...")
             for gid in data["groups"]:
                 try:
                     if data["mode"] == "random":
@@ -70,31 +71,26 @@ async def ad_sender(client):
                         save_data(data)
 
                     await client.forward_messages(gid, msg.id, "me")
-                    print(Fore.GREEN + f"Forwarded ad to {gid}")
+                    print(Fore.GREEN + f"Sent to {gid}")
                     await asyncio.sleep(random.uniform(10, 20))
                 except Exception as e:
-                    print(Fore.RED + f"Error sending to group {gid}: {e}")
+                    print(Fore.RED + f"Error sending to {gid}: {e}")
 
-            print(Fore.CYAN + f"Cycle done. Sleeping {data['frequency']} minutes.")
+            print(Fore.CYAN + f"Sleeping for {data['frequency']} minutes")
             await asyncio.sleep(data["frequency"] * 60)
         except Exception as e:
             print(Fore.RED + f"Error in ad_sender: {e}")
             await asyncio.sleep(30)
 
 async def command_handler(client):
-    admin_id = None
-
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
-        nonlocal admin_id
         sender = await event.get_sender()
 
         if not event.is_private:
             return
 
-        if admin_id is None:
-            admin_id = sender.id
-        elif sender.id != admin_id:
+        if sender.id != ADMIN_ID:
             await event.reply("To buy anything DM @EscapeEternity! This is just a Bot.")
             return
 
@@ -109,7 +105,7 @@ async def command_handler(client):
                     save_data(data)
                     await event.reply(f"✅ Added group {gid}")
                 else:
-                    await event.reply("Group already in list.")
+                    await event.reply("Group already exists.")
             except:
                 await event.reply("❌ Usage: !addgroup <group_id>")
 
@@ -144,7 +140,11 @@ async def command_handler(client):
                 await event.reply("❌ Usage: !setmode <random/order>")
 
         elif cmd == "!status":
-            await event.reply(f"👥 Groups: {data['groups']}\n📤 Mode: {data['mode']}\n⏱ Frequency: {data['frequency']} min")
+            await event.reply(
+                f"👥 Groups: {data['groups']}\n"
+                f"📤 Mode: {data['mode']}\n"
+                f"⏱ Frequency: {data['frequency']} min"
+            )
 
         elif cmd == "!test":
             try:
@@ -157,13 +157,24 @@ async def command_handler(client):
                 msg = ads.messages[0]
                 for gid in data["groups"]:
                     await client.forward_messages(gid, msg.id, "me")
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(2)
                 await event.reply("✅ Sent test ad to all selected groups.")
             except Exception as e:
                 await event.reply(f"❌ Error: {e}")
 
+        elif cmd == "!help":
+            await event.reply(
+                "**🛠️ Admin Commands:**\n"
+                "`!addgroup <group_id>` – Add group\n"
+                "`!rmgroup <group_id>` – Remove group\n"
+                "`!setfreq <minutes>` – Set frequency\n"
+                "`!setmode random|order` – Ad mode\n"
+                "`!status` – Show current status\n"
+                "`!test` – Send latest saved msg to all groups"
+            )
+
         else:
-            await event.reply("❓ Unknown command. Use !status, !addgroup, !setfreq, !setmode, !test, !rmgroup")
+            await event.reply("❓ Unknown command. Type `!help` for list.")
 
 async def main():
     session_name = "session1"
@@ -188,6 +199,8 @@ async def main():
     if not await client.is_user_authorized():
         print(Fore.RED + "Telegram account not logged in.")
         return
+
+    print(Fore.GREEN + "==> Your service is live 🎉")
 
     await asyncio.gather(
         start_web_server(),
