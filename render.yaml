@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: telegram-ad-bot
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: ""
+    startCommand: python3 main.py
+    envVars:
+      - key: PORT
+        value: 10000
