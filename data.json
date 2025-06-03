@@ -1,6 +1,10 @@
 {
-  "groups": [],
-  "ads": ["Welcome to our Promo Bot by @EscapeEternity!", "🔥 Get the best deals now!"],
+  "groups": [group_ids],
+  "ads": [
+    {"chat_id": 12345678, "message_id": 111},
+    {"chat_id": 12345678, "message_id": 112}
+  ],
   "frequency": 45,
-  "mode": "random"
+  "mode": "random",
+  "last_sent_ad_index": 0
 }
