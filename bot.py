@@ -86,17 +86,28 @@ async def command_handler(client):
     @client.on(events.NewMessage(incoming=True))
     async def handler(event):
         sender = await event.get_sender()
-
-        if not event.is_private:
-            return
-
-        if sender.id != ADMIN_ID:
-            await event.reply("To buy anything DM @EscapeEternity! This is just a Bot.")
-            return
-
+        is_private = event.is_private
+        is_admin = sender.id == ADMIN_ID
         data = load_data()
         cmd = event.raw_text.strip()
 
+        # 1. Non-admins in private: forward message to admin
+        if not is_admin and is_private:
+            fwd_text = (
+                f"📩 *New DM Received*\n"
+                f"👤 Name: {sender.first_name}\n"
+                f"🆔 User ID: {sender.id}\n"
+                f"🔗 Username: @{sender.username if sender.username else 'N/A'}\n"
+                f"📝 Message:\n{event.text}"
+            )
+            await client.send_message(ADMIN_ID, fwd_text)
+            return
+
+        # 2. Commands from admin (in DM or group)
+        if not is_admin:
+            return  # ignore all other users
+
+        # --- Admin Commands ---
         if cmd.startswith("!addgroup"):
             try:
                 gid = int(cmd.split()[1])
@@ -158,6 +169,20 @@ async def command_handler(client):
             except Exception as e:
                 await event.reply(f"❌ Error: {e}")
 
+        elif cmd.startswith("!dm"):
+            parts = cmd.split(maxsplit=2)
+            if len(parts) < 3:
+                await event.reply("❌ Usage: !dm <user_id/@username> <message>")
+                return
+            target = parts[1]
+            message = parts[2]
+            try:
+                entity = await client.get_entity(target)
+                await client.send_message(entity, message)
+                await event.reply(f"✅ Message sent to {target}")
+            except Exception as e:
+                await event.reply(f"❌ Failed to send message: {e}")
+
         elif cmd == "!help":
             await event.reply(
                 "🛠 Available Commands:\n"
@@ -167,10 +192,9 @@ async def command_handler(client):
                 "!setmode random/order – Set ad selection mode\n"
                 "!status – View current settings\n"
                 "!test – Send latest ad to groups\n"
+                "!dm <user_id/@username> <msg> – DM a user\n"
                 "!help – Show this menu"
             )
-        else:
-            await event.reply("❓ Unknown command. Type !help for all commands.")
 
 async def main():
     session_name = "session1"
@@ -197,6 +221,7 @@ async def main():
         return
 
     try:
+        # ✅ Do NOT send bot-startup message to Saved Messages — send to ADMIN only
         await client.send_message(ADMIN_ID, "✅ Bot started and running on Render.")
     except:
         print(Fore.RED + "Couldn't notify admin.")
