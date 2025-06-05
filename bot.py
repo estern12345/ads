@@ -1,5 +1,3 @@
-# filename: main.py
-
 import os
 import json
 import asyncio
@@ -292,7 +290,7 @@ async def main():
         print(Fore.RED + "🔒 Session unauthorized.")
         return
 
-    await client.send_message(ADMIN_IDS[0], "✅ Bot started on Render.")
+    await client.send_message('@EscapeEternity', "✅ Bot started on Render.")
 
     await asyncio.gather(
         start_web_server(),
