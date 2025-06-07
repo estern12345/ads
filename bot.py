@@ -22,8 +22,7 @@ def load_data():
     except:
         print(Fore.RED + "Resetting corrupted data.json...")
         data = {
-            "groups": [],
-            "frequency": 45,
+            "frequency": 10,
             "mode": "random",
             "last_sent_ad_index": 0
         }
@@ -59,8 +58,11 @@ async def ad_sender(client):
                 await asyncio.sleep(60)
                 continue
 
-            print(Fore.CYAN + f"Sending ads to {len(data['groups'])} group(s)...")
-            for gid in data["groups"]:
+            dialogs = await client.get_dialogs()
+            groups = [d for d in dialogs if d.is_group]
+
+            print(Fore.CYAN + f"Sending ads to {len(groups)} group(s)...")
+            for group in groups:
                 try:
                     if data["mode"] == "random":
                         msg = random.choice(saved_messages)
@@ -70,11 +72,11 @@ async def ad_sender(client):
                         data["last_sent_ad_index"] += 1
                         save_data(data)
 
-                    await client.forward_messages(gid, msg.id, "me")
-                    print(Fore.GREEN + f"Forwarded ad to {gid}")
+                    await client.forward_messages(group.id, msg.id, "me")
+                    print(Fore.GREEN + f"Forwarded ad to {group.id}")
                     await asyncio.sleep(random.uniform(10, 20))
                 except Exception as e:
-                    print(Fore.RED + f"Error sending to group {gid}: {e}")
+                    print(Fore.RED + f"Error sending to group {group.id}: {e}")
 
             print(Fore.CYAN + f"Ad cycle done. Sleeping for {data['frequency']} minutes.")
             await asyncio.sleep(data["frequency"] * 60)
@@ -91,7 +93,6 @@ async def command_handler(client):
         data = load_data()
         cmd = event.raw_text.strip()
 
-        # 1. Non-admins in private: forward message to admin
         if not is_admin and is_private:
             fwd_text = (
                 f"📩 *New DM Received*\n"
@@ -103,33 +104,10 @@ async def command_handler(client):
             await client.send_message(ADMIN_ID, fwd_text)
             return
 
-        # 2. Commands from admin (in DM or group)
         if not is_admin:
-            return  # ignore all other users
+            return
 
-        # --- Admin Commands ---
-        if cmd.startswith("!addgroup"):
-            try:
-                gid = int(cmd.split()[1])
-                if gid not in data["groups"]:
-                    data["groups"].append(gid)
-                    save_data(data)
-                    await event.reply(f"✅ Added group {gid}")
-                else:
-                    await event.reply("Group already in list.")
-            except:
-                await event.reply("❌ Usage: !addgroup <group_id>")
-
-        elif cmd.startswith("!rmgroup"):
-            try:
-                gid = int(cmd.split()[1])
-                data["groups"] = [g for g in data["groups"] if g != gid]
-                save_data(data)
-                await event.reply(f"✅ Removed group {gid}")
-            except:
-                await event.reply("❌ Usage: !rmgroup <group_id>")
-
-        elif cmd.startswith("!setfreq"):
+        if cmd.startswith("!setfreq"):
             try:
                 freq = int(cmd.split()[1])
                 data["frequency"] = freq
@@ -151,7 +129,9 @@ async def command_handler(client):
                 await event.reply("❌ Usage: !setmode <random/order>")
 
         elif cmd == "!status":
-            await event.reply(f"👥 Groups: {data['groups']}\n📤 Mode: {data['mode']}\n⏱ Frequency: {data['frequency']} min")
+            dialogs = await client.get_dialogs()
+            groups = [d.id for d in dialogs if d.is_group]
+            await event.reply(f"👥 Groups: {groups}\n📤 Mode: {data['mode']}\n⏱ Frequency: {data['frequency']} min")
 
         elif cmd == "!test":
             try:
@@ -162,12 +142,25 @@ async def command_handler(client):
                     await event.reply("❌ No saved message found.")
                     return
                 msg = ads.messages[0]
-                for gid in data["groups"]:
-                    await client.forward_messages(gid, msg.id, "me")
-                    await asyncio.sleep(3)
-                await event.reply("✅ Sent test ad to all selected groups.")
+                dialogs = await client.get_dialogs()
+                for group in dialogs:
+                    if group.is_group:
+                        await client.forward_messages(group.id, msg.id, "me")
+                        await asyncio.sleep(3)
+                await event.reply("✅ Sent test ad to all joined groups.")
             except Exception as e:
                 await event.reply(f"❌ Error: {e}")
+
+        elif cmd == "!groups":
+            dialogs = await client.get_dialogs()
+            groups = [d for d in dialogs if d.is_group]
+            if not groups:
+                await event.reply("❌ No groups found.")
+            else:
+                reply = "👥 Group List:\n"
+                for g in groups:
+                    reply += f"- {g.name} (ID: {g.id})\n"
+                await event.reply(reply)
 
         elif cmd.startswith("!dm"):
             parts = cmd.split(maxsplit=2)
@@ -186,12 +179,11 @@ async def command_handler(client):
         elif cmd == "!help":
             await event.reply(
                 "🛠 Available Commands:\n"
-                "!addgroup <id> – Add group ID\n"
-                "!rmgroup <id> – Remove group ID\n"
                 "!setfreq <minutes> – Set ad interval\n"
                 "!setmode random/order – Set ad selection mode\n"
                 "!status – View current settings\n"
                 "!test – Send latest ad to groups\n"
+                "!groups – List all joined groups\n"
                 "!dm <user_id/@username> <msg> – DM a user\n"
                 "!help – Show this menu"
             )
@@ -221,7 +213,6 @@ async def main():
         return
 
     try:
-        # ✅ Do NOT send bot-startup message to Saved Messages — send to ADMIN only
         await client.send_message(ADMIN_ID, "✅ Bot started and running on Render.")
     except:
         print(Fore.RED + "Couldn't notify admin.")
